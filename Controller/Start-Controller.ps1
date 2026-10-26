@@ -7,7 +7,8 @@ param(
     [double]$Seconds = 0,
     [switch]$AllowUnfocused,
     [string]$OutputPath,
-    [string]$ModPath
+    [string]$ModPath,
+    [ValidateSet('Auto','XInput','DualShock4')][string]$Backend='Auto'
 )
 $ErrorActionPreference = 'Stop'
 if (-not $OutputPath) {
@@ -16,10 +17,10 @@ if (-not $OutputPath) {
 }
 try {
     if (-not ('AnalogDrive.ControllerBridge' -as [type])) {
-        Add-Type -Path (Join-Path $PSScriptRoot 'ControllerBridge.cs')
+        Add-Type -Path @((Join-Path $PSScriptRoot 'ControllerBridge.cs'),(Join-Path $PSScriptRoot 'DualShockInput.cs')) -ReferencedAssemblies System.Windows.Forms,System.Drawing
     }
-    [AnalogDrive.ControllerBridge]::Run($OutputPath, $ControllerIndex, $Deadzone,
-        $TriggerThreshold, $Hz, $Seconds, $AllowUnfocused.IsPresent)
+    [AnalogDrive.ControllerBridge]::RunWithBackend($OutputPath, $ControllerIndex, $Deadzone,
+        $TriggerThreshold, $Hz, $Seconds, $AllowUnfocused.IsPresent,$Backend)
 } catch {
     Write-Error "Controller reader stopped: $($_.Exception.Message)"
     exit 1

@@ -10,7 +10,7 @@ function Get-AnalogDriveInputPath {
     }
     if ($ModPath) {
         $ModPath = (Resolve-Path -LiteralPath $ModPath).Path
-        if (-not (Test-AnalogMod $ModPath)) { throw 'That folder is not the Analog Drive mod. Choose the folder containing its description.json.' }
+        if (-not (Test-AnalogMod $ModPath)) { throw 'That folder is not the Analog Controller Input mod. Choose the folder containing its description.json.' }
         return Join-Path $ModPath 'Controller\input.json'
     }
     # The launcher shipped inside an installed mod always feeds that exact copy.
@@ -54,7 +54,7 @@ function Get-AnalogDriveInputPath {
             Time=if ($request) { $request.LastWriteTimeUtc } else { $description.LastWriteTimeUtc } }
     } | Sort-Object @{Expression='Requested';Descending=$true},@{Expression='Time';Descending=$true})
     if ($found.Count -eq 0) {
-        throw 'Analog Drive was not found. Subscribe/install the mod, enter its seat once, then restart this helper. For a custom Steam location, use -ModPath with the mod folder.'
+        throw 'Analog Controller Input was not found. Subscribe/install the mod, enter its seat once, then restart this helper. For a custom Steam location, use -ModPath with the mod folder.'
     }
     if ($found.Count -gt 1) {
         Write-Host 'Multiple mod copies found; using the most recently requested seat/mod. Use -ModPath to override.'

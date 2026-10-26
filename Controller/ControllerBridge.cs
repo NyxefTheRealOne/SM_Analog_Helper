@@ -1,4 +1,4 @@
-// Windows XInput -> local JSON. No network, input injection, or game-file patches.
+// Windows XInput + DualShock 4 Raw Input -> local JSON. No input injection.
 using System;
 using System.Diagnostics;
 using System.Globalization;
@@ -34,6 +34,7 @@ namespace AnalogDrive {
         private static volatile bool stop;
         public sealed class PreviewFrame {
             public bool Connected, Focused, Armed, OutputHealthy;
+            public string Device="Controller";
             public double LeftX, LeftY, RightX, RightY, LeftTrigger, RightTrigger;
             public ushort Buttons;
         }
@@ -92,6 +93,15 @@ namespace AnalogDrive {
         }
         public static void Run(string path, int selected, double deadzone, int triggerThreshold,
             int hz, double seconds, bool allowUnfocused) {
+            RunWithBackend(path,selected,deadzone,triggerThreshold,hz,seconds,allowUnfocused,"Auto");
+        }
+        public static void RunWithBackend(string path,int selected,double deadzone,int triggerThreshold,
+            int hz,double seconds,bool allowUnfocused,string backend) {
+            if(String.Equals(backend,"auto",StringComparison.OrdinalIgnoreCase)) backend="Auto";
+            if(String.Equals(backend,"xinput",StringComparison.OrdinalIgnoreCase)) backend="XInput";
+            if(String.Equals(backend,"dualshock4",StringComparison.OrdinalIgnoreCase)) backend="DualShock4";
+            if(backend!="Auto" && backend!="XInput" && backend!="DualShock4") throw new ArgumentException("Unknown controller backend.");
+            if(backend=="DualShock4" && selected>=0) throw new ArgumentException("ControllerIndex selects Xbox slots; use -1 for DualShock 4.");
             if (selected < -1 || selected > 3 || deadzone < 0 || deadzone >= 1
                 || triggerThreshold < 0 || triggerThreshold >= 255 || hz < 10 || hz > 120)
                 throw new ArgumentException("Invalid controller configuration.");
@@ -100,7 +110,12 @@ namespace AnalogDrive {
             // Only one writer per mod installation, including two copies of the launcher.
             string lockPath = Path.Combine(Path.GetDirectoryName(path), "bridge.lock");
             using (FileStream singleWriter = new FileStream(lockPath, FileMode.OpenOrCreate,
-                FileAccess.ReadWrite, FileShare.None)) {
+                FileAccess.ReadWrite, FileShare.None))
+            using (DualShockInput sony=backend!="XInput" && selected<0 ? new DualShockInput():null) {
+                if(sony!=null && sony.Error!=null) {
+                    if(backend=="DualShock4") throw new InvalidOperationException(sony.Error);
+                    Console.WriteLine("DualShock input unavailable: "+sony.Error+". Xbox input remains available.");
+                }
                 string session = Guid.NewGuid().ToString("N");
                 string folder = Path.GetDirectoryName(path);
                 string stem = Path.GetFileNameWithoutExtension(path);
@@ -114,12 +129,13 @@ namespace AnalogDrive {
                 Stopwatch timer = Stopwatch.StartNew();
                 long sequence = 0, shiftUp = 0, shiftDown = 0;
                 int lastIndex = -1, errors = 0;
+                string lastSource=null;
                 bool armed = false, wasFocused = false, wasConnected = false;
                 ushort lastButtons = 0;
                 double nextPrint = 0, nextFrame = 0, lastPublished = -1;
                 bool highResolution = timeBeginPeriod(1) == 0;
                 try {
-                    Console.WriteLine("Analog Drive controller reader. Keep this window open; Ctrl+C stops it.");
+                    Console.WriteLine("Analog Controller Input controller reader. Keep this window open; Ctrl+C stops it.");
                     Console.WriteLine("Focus game, release triggers to arm. X exits; A slot 1; manual: LB down / RB up.");
                     Console.WriteLine("Output: " + path + " (3 buffered snapshots, " + hz + " Hz)");
                     string initial = Packet(session, 0, false, false, false, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0);
@@ -127,14 +143,18 @@ namespace AnalogDrive {
                     while (!stop && (seconds <= 0 || timer.Elapsed.TotalSeconds < seconds)) {
                         State state = new State();
                         int index = selected >= 0 ? selected : lastIndex;
-                        bool connected = index >= 0 && Read((uint)index, out state) == 0;
-                        if (!connected && selected == -1) {
+                        string source=null,device="Xbox";
+                        bool connected=sony!=null && sony.TryRead(out state,out source);
+                        if(connected) { index=4;device="DualShock 4"; }
+                        if(!connected && backend!="DualShock4") connected=index>=0 && index<4 && Read((uint)index,out state)==0;
+                        if (!connected && selected == -1 && backend!="DualShock4") {
                             for (int n = 0; n < 4; n++) {
                                 if (Read((uint)n, out state) == 0) { index = n; connected = true; break; }
                             }
                         }
+                        if(connected && source==null) source="xinput:"+index;
                         bool focused = allowUnfocused || GameFocused();
-                        if (!connected || !focused || !wasConnected || !wasFocused || index != lastIndex) armed = false;
+                        if (!connected || !focused || !wasConnected || !wasFocused || source != lastSource) armed = false;
                         double throttle = connected ? Trigger(state.Pad.RightTrigger, triggerThreshold) : 0;
                         double brake = connected ? Trigger(state.Pad.LeftTrigger, triggerThreshold) : 0;
                         if (connected && focused && throttle == 0 && brake == 0) armed = true;
@@ -145,7 +165,7 @@ namespace AnalogDrive {
                         ushort buttons = connected ? state.Pad.Buttons : (ushort)0;
                         // Cumulative press counts survive short presses between game ticks
                         // and repeated or missed network packets. Holding a bumper shifts once.
-                        if (armed && wasFocused && wasConnected && index == lastIndex) {
+                        if (armed && wasFocused && wasConnected && source == lastSource) {
                             if ((buttons & 512) != 0 && (lastButtons & 512) == 0) shiftUp++;
                             if ((buttons & 256) != 0 && (lastButtons & 256) == 0) shiftDown++;
                         }
@@ -163,16 +183,18 @@ namespace AnalogDrive {
                         // Immutable after publication; the optional trailer UI reads
                         // this snapshot without file I/O or delaying the 120 Hz writer.
                         Latest = new PreviewFrame { Connected=connected, Focused=focused, Armed=armed,
+                            Device=device,
                             OutputHealthy=errors==0, LeftX=steer, LeftY=leftY, RightX=rightX, RightY=rightY,
                             LeftTrigger=brake, RightTrigger=throttle, Buttons=buttons };
                         if (timer.Elapsed.TotalSeconds >= nextPrint) {
                             nextPrint = timer.Elapsed.TotalSeconds + 1;
                             Console.WriteLine("{0} | {1} | LX {2:0.00} LY {3:0.00} RX {4:0.00} RY {5:0.00} | RT {6:0.00} LT {7:0.00}",
-                                connected ? "Controller " + (index + 1) : "No Xbox controller",
+                                connected ? device+(index<4 ? " "+(index+1):"") : "No controller (Xbox / DualShock 4)",
                                 lastPublished < 0 || timer.Elapsed.TotalSeconds - lastPublished > 0.1 ? "OUTPUT BLOCKED" :
                                 (armed ? "READY" : (focused ? "Release triggers" : "Focus game")), steer, leftY, rightX, rightY, throttle, brake);
                         }
                         lastIndex = connected ? index : -1;
+                        lastSource=connected ? source:null;
                         wasFocused = focused; wasConnected = connected;
                         lastButtons = buttons;
                         nextFrame += 1.0 / hz;
