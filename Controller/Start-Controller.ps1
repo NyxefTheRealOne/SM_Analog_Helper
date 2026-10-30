@@ -17,7 +17,7 @@ if (-not $OutputPath) {
 }
 try {
     if (-not ('AnalogDrive.ControllerBridge' -as [type])) {
-        Add-Type -Path @((Join-Path $PSScriptRoot 'ControllerBridge.cs'),(Join-Path $PSScriptRoot 'DualShockInput.cs')) -ReferencedAssemblies System.Windows.Forms,System.Drawing
+        Add-Type -Path @((Join-Path $PSScriptRoot 'ControllerBridge.cs'),(Join-Path $PSScriptRoot 'DualShockInput.cs'),(Join-Path $PSScriptRoot 'HidDevices.cs')) -ReferencedAssemblies System.Windows.Forms,System.Drawing
     }
     [AnalogDrive.ControllerBridge]::RunWithBackend($OutputPath, $ControllerIndex, $Deadzone,
         $TriggerThreshold, $Hz, $Seconds, $AllowUnfocused.IsPresent,$Backend)

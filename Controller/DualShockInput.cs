@@ -37,6 +37,7 @@ namespace AnalogDrive {
         private readonly Dictionary<IntPtr,bool> known=new Dictionary<IntPtr,bool>();
         private readonly ManualResetEvent initialized=new ManualResetEvent(false);
         private readonly Thread thread;
+        public readonly HidDevices Devices=new HidDevices();
         private IntPtr window;
         private IntPtr selected;
         private volatile bool disposed;
@@ -51,15 +52,24 @@ namespace AnalogDrive {
             lock(gate) {
                 long now=Stopwatch.GetTimestamp(); Sample sample;
                 if(samples.TryGetValue(selected,out sample) && now-sample.Tick<=FreshTicks) {
-                    state=sample.State;source="ds4:"+selected.ToInt64();return true;
+                    state=sample.State;source="ds4:"+(Devices.Identity(selected) ?? selected.ToInt64().ToString());return true;
                 }
                 foreach(KeyValuePair<IntPtr,Sample> entry in samples) {
                     if(now-entry.Value.Tick<=FreshTicks) {
-                        selected=entry.Key;state=entry.Value.State;source="ds4:"+selected.ToInt64();return true;
+                        selected=entry.Key;state=entry.Value.State;source="ds4:"+(Devices.Identity(selected) ?? selected.ToInt64().ToString());return true;
                     }
                 }
             }
             state=new ControllerBridge.State();source=null;return false;
+        }
+        public List<InputDevice> Gamepads() {
+            lock(gate) {
+                List<InputDevice> result=new List<InputDevice>();long now=Stopwatch.GetTimestamp();
+                foreach(KeyValuePair<IntPtr,Sample> entry in samples) if(now-entry.Value.Tick<=FreshTicks) {
+                    string id=Devices.Identity(entry.Key);if(id!=null) result.Add(ControllerBridge.GamepadDevice("ds4:"+id,"DualShock 4 (gamepad layout)",entry.Value.State));
+                }
+                return result;
+            }
         }
         public static bool IsSupported(uint vendor,uint product) {
             return vendor==0x054c && (product==0x05c4 || product==0x09cc || product==0x0ba0);
@@ -125,13 +135,14 @@ namespace AnalogDrive {
                 uint actual=GetRawInputData(raw,0x10000003,buffer,ref size,headerSize);
                 if(actual==uint.MaxValue || actual<headerSize+8) return;
                 Header header=(Header)Marshal.PtrToStructure(buffer,typeof(Header));
-                if(header.Type!=2 || !Accept(header.Device)) return;
+                if(header.Type!=2) return;
                 int length=Marshal.ReadInt32(buffer,(int)headerSize),count=Marshal.ReadInt32(buffer,(int)headerSize+4);
-                if(length<10 || count<1 || (long)headerSize+8+(long)length*count>actual) return;
+                if(length<1 || count<1 || (long)headerSize+8+(long)length*count>actual) return;
                 for(int n=0;n<count;n++) {
                     byte[] report=new byte[length];Marshal.Copy(IntPtr.Add(buffer,(int)headerSize+8+n*length),report,0,length);
+                    Devices.Receive(header.Device,report);
                     ControllerBridge.State state;
-                    if(Decode(report,out state)) lock(gate) samples[header.Device]=new Sample {State=state,Tick=Stopwatch.GetTimestamp()};
+                    if(Accept(header.Device) && Decode(report,out state)) lock(gate) samples[header.Device]=new Sample {State=state,Tick=Stopwatch.GetTimestamp()};
                 }
             } finally { Marshal.FreeHGlobal(buffer); }
         }
@@ -143,8 +154,9 @@ namespace AnalogDrive {
             protected override void WndProc(ref Message m) {
                 if(m.Msg==0xff) {
                     try { owner.Receive(m.LParam); } catch(Exception e) { owner.Error=e.Message; }
-                } else if(m.Msg==0xfe && m.WParam.ToInt64()==2) {
-                    owner.known.Remove(m.LParam); lock(owner.gate) owner.samples.Remove(m.LParam);
+                } else if(m.Msg==0xfe) {
+                    if(m.WParam.ToInt64()==2) { owner.known.Remove(m.LParam); lock(owner.gate) owner.samples.Remove(m.LParam); }
+                    owner.Devices.Refresh();
                 } else if(m.Msg==0x10) { DestroyHandle();Application.ExitThread();return; }
                 base.WndProc(ref m);
             }
@@ -153,14 +165,19 @@ namespace AnalogDrive {
             InputWindow target=null;
             try {
                 target=new InputWindow(this);window=target.Handle;
-                RawDevice[] devices={new RawDevice {Page=1,Usage=5,Flags=0x2100,Target=window}};
-                if(!RegisterRawInputDevices(devices,1,(uint)Marshal.SizeOf(typeof(RawDevice))))
+                RawDevice[] devices={new RawDevice {Page=1,Usage=5,Flags=0x2100,Target=window},
+                    new RawDevice {Page=1,Usage=4,Flags=0x2100,Target=window},new RawDevice {Page=1,Usage=8,Flags=0x2100,Target=window},
+                    new RawDevice {Page=2,Usage=0,Flags=0x2120,Target=window}};
+                Devices.Refresh();
+                if(!RegisterRawInputDevices(devices,(uint)devices.Length,(uint)Marshal.SizeOf(typeof(RawDevice))))
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
                 initialized.Set();
                 if(!disposed) Application.Run();
             } catch(Exception e) { Error=e.Message;initialized.Set(); }
             finally {
-                RegisterRawInputDevices(new RawDevice[] {new RawDevice {Page=1,Usage=5,Flags=1,Target=IntPtr.Zero}},1,(uint)Marshal.SizeOf(typeof(RawDevice)));
+                RawDevice[] remove={new RawDevice {Page=1,Usage=5,Flags=1},new RawDevice {Page=1,Usage=4,Flags=1},
+                    new RawDevice {Page=1,Usage=8,Flags=1},new RawDevice {Page=2,Usage=0,Flags=0x21}};
+                RegisterRawInputDevices(remove,(uint)remove.Length,(uint)Marshal.SizeOf(typeof(RawDevice)));
                 if(target!=null && target.Handle!=IntPtr.Zero) target.DestroyHandle();
                 window=IntPtr.Zero;
             }
@@ -169,6 +186,7 @@ namespace AnalogDrive {
             disposed=true;
             if(window!=IntPtr.Zero) PostMessage(window,0x10,IntPtr.Zero,IntPtr.Zero);
             if(thread.IsAlive) thread.Join(2000);
+            if(!thread.IsAlive) Devices.Dispose();
         }
     }
 }
