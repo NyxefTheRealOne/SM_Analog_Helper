@@ -2,7 +2,7 @@
 
 Windows XInput + descriptor-driven Raw Input for wheels, joysticks, pedals and controllers. The helper exposes every available control on every detected gaming HID collection. Windows PowerShell 5.1 and .NET Framework are used; no extra SDK, admin access or game patches are required.
 
-**[Download the complete helper from Releases](https://github.com/NyxefTheRealOne/SM_Analog_Helper/releases/latest)**. Use the attached `AnalogControllerInput-Helper-1.9.2.zip`, extract it into a writable folder and keep the folder structure intact. The launcher needs every file in `Controller`, including `HidDevices.cs`.
+Download the complete helper as .zip , extract it into a writable folder and keep the folder structure intact. The launcher needs every file in `Controller`, including `HidDevices.cs`.
 
 Extract all files and run **Start Controller.cmd**. Keep it running. Press **U on an Analog Seat/Saddle in game**, select the device and assign its axes/buttons. Choose Xbox/XInput or the DS4 gamepad layout for independent named triggers. Generic HID layouts also expose descriptor controls. Device identities use Windows paths, allowing reconnects to the same port to retain assignments. Devices whose Windows path changes need to be selected again.
 
