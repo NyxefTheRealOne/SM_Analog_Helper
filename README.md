@@ -1,50 +1,27 @@
-# Analog Controller Input - Controller Helper
+# Analog Controller Input helper 1.9.2
 
-Windows helper for the **Analog Controller Input** Scrap Mechanic mod. It reads Xbox controllers through XInput and Sony **DualShock 4** controllers through native Windows Raw Input, then sends analog controls to the mod at 120 Hz. No administrator access, extra SDK, game-file patch or input injection is required.
+Windows XInput + descriptor-driven Raw Input for wheels, joysticks, pedals and controllers. The helper exposes every available control on every detected gaming HID collection. Windows PowerShell 5.1 and .NET Framework are used; no extra SDK, admin access or game patches are required.
 
-## Start
+**[Download the complete helper from Releases](https://github.com/NyxefTheRealOne/SM_Analog_Helper/releases/latest)**. Use the attached `AnalogControllerInput-Helper-1.9.2.zip`, extract it into a writable folder and keep the folder structure intact. The launcher needs every file in `Controller`, including `HidDevices.cs`.
 
-1. Install/subscribe to the mod and enable it in a Creative world.
-2. Enter an Analog Driver Seat/Saddle once. A missing-helper prompt shows the download address.
-3. Download this repository as a ZIP (GitHub **Code > Download ZIP**) or download its helper Release ZIP. Extract **all** files, then double-click **Start Controller.cmd**. The CMD alone is not enough.
-4. Keep the console open. Return to Scrap Mechanic and release both triggers. Fresh helper input closes the prompt automatically.
-5. Ctrl+C stops the reader. The mod fails safe if input stops.
+Extract all files and run **Start Controller.cmd**. Keep it running. Press **U on an Analog Seat/Saddle in game**, select the device and assign its axes/buttons. Choose Xbox/XInput or the DS4 gamepad layout for independent named triggers. Generic HID layouts also expose descriptor controls. Device identities use Windows paths, allowing reconnects to the same port to retain assignments. Devices whose Windows path changes need to be selected again.
 
-Requires Windows PowerShell 5.1, included with Windows. Source is compiled with Windows' included .NET Framework on launch; no .NET SDK or separate driver installer is needed.
+Generic analog controls are normalized to -1..1; buttons are 0/1. Use the seat's **AXIS CONFIG MODE** to drag points on the input/output response graph. Flat center sections create deadzones; PEDAL 0 TO 1 and FLIP INPUT provide pedal presets. The seat waits for assigned pedals and buttons to release after selection/reconnect. Camera control is removed; controller buttons can be assigned to connected switches/buttons. Manual gamepad shifts still use LB/RB.
 
-Repository/download page: https://github.com/NyxefTheRealOne/SM_Analog_Helper
+## Updating from an older helper
 
-## Supported controllers
+Close the previous helper. Extract the complete new release into a new folder and use that folder's Start Controller.cmd. Do not mix the old Controller folder with the new launcher. Enter the mod's seat once before launching the downloaded helper so it can select that installation. The mod itself updates separately through Steam Workshop.
 
-- **Xbox / XInput**: Xbox Series and other XInput-compatible controllers over a supported Windows USB/Bluetooth/wireless connection.
-- **Sony DualShock 4 (PS4)**: original and revision 2 Sony models, USB and Bluetooth report formats. Both sticks and L2/R2 remain independent analog axes. Native support does not require DS4Windows or Steam Input emulation.
-- DualShock 3, DualSense and third-party PlayStation clones are not claimed as native DS4 devices. A controller exposed by an existing Windows mapper as XInput can still use the XInput backend.
+This package is paired with mod 1.9.2. The new Pause Proxy and piston hold behavior run in the mod's Lua scripts; the helper code is unchanged from the immediately preceding 1.9.x bundles. Older published helper installations should still be replaced with this complete package because it includes descriptor-driven HID support.
 
-Auto mode prefers a live native DS4, then XInput. If multiple controller types are connected, select a backend explicitly. ControllerIndex selects Xbox slots 0-3 and is left at -1 for DS4. If HidHide/DS4Windows hides the physical controller, use XInput for its mapped Xbox device, or expose the physical DS4 to this helper.
+## Included files
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Controller\Start-Controller.ps1 -Backend DualShock4
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Controller\Start-Controller.ps1 -Backend XInput -ControllerIndex 0
-```
+- Start Controller.cmd
+- Controller/Start-Controller.ps1
+- Controller/Resolve-InputPath.ps1
+- Controller/ControllerBridge.cs
+- Controller/DualShockInput.cs
+- Controller/HidDevices.cs
+- README.md, CHANGELOG.md, VERSION and LICENSE
 
-## Controls
-
-Left stick steers by default; right stick moves the camera. RT/R2 accelerates, LT/L2 brakes; equal amounts cancel under the default combined trigger axis. LB/L1 shifts down and RB/R1 shifts up in manual mode. A/Cross operates toolbar slot 1. X/Square exits the seat. U on a seat/saddle opens its axis-assignment menu.
-
-**READY** means connected, focused on Scrap Mechanic, triggers released and input being written. **Focus game**, **Release triggers**, **No controller** and **OUTPUT BLOCKED** identify the specific condition preventing control. A source change, disconnect, stale native report or focus loss disarms input; release both triggers after returning.
-
-## Finding the mod
-
-The helper finds local Mods and subscribed Workshop copies across Steam libraries. With multiple copies, it selects the most recently entered seat's mod. The console prints the path. Enter the intended seat and restart if needed, or override:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Controller\Start-Controller.ps1 -ModPath "D:\SteamLibrary\steamapps\workshop\content87990\WORKSHOP-ID"
-```
-
-The folder must contain this mod's description.json. Each multiplayer driver needs their own reader. Only one reader can own an installation's input files; close the normal helper before running the recording helper.
-
-## Publishing this helper
-
-This folder is the complete helper repository. Upload its contents to **NyxefTheRealOne/SM_Analog_Helper** and optionally attach `AnalogControllerInput-Helper-1.6.0.zip` to a GitHub Release. The mod already links to this repository. No upload was performed by the local builder.
-
-Native DS4 protocol/Windows listener tests pass; a physical DS4 session remains to be verified on USB and Bluetooth. Code is MIT, see LICENSE. Version 1.6.0.
+No installer or precompiled EXE is required. Windows PowerShell compiles the included C# source when the launcher starts. Keep its console window open while playing.
